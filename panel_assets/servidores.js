@@ -333,6 +333,8 @@
         mensaje(e.message === "sesion" ? "La sesión ha caducado: abre el panel desde el icono de la barra de menús." : "No se pudo leer el detalle ahora; vuelve a intentarlo."); });
   }
 
+  window.CG.sv = {tarjeta, bloque, titulo, insignia};        // piezas que también usa la pestaña Cloudflare (cloudflare.js)
+
   window.cargarServidores = function(){
     fetch("/ajustes").then(r => { if (!r.ok) throw new Error("http"); return r.json(); }).then(a => {
       servidores = ((a.config && a.config.servidores) || []).filter(s => s && /^[0-9a-f]{32}$/.test(s.id || "") && typeof s.nombre === "string");

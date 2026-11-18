@@ -45,7 +45,7 @@ body{{font:13px/1.3 -apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Ne
 border:1px solid var(--borde);display:grid;place-items:center}}
 .refrescar svg{{width:16px;height:16px}}
 .pest{{height:{G.PESTANAS_ALTO}px;padding:4px 0}}
-.seg{{display:grid;grid-template-columns:1fr 1fr;height:26px;border-radius:8px;background:var(--tarjeta);
+.seg{{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;height:26px;border-radius:8px;background:var(--tarjeta);
 border:1px solid var(--borde);padding:2px}}
 .seg span{{display:grid;place-items:center;border-radius:6px;font-size:12px;font-weight:500;color:var(--sub)}}
 .seg span.on{{background:var(--activa);color:var(--fg);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)}}
@@ -152,10 +152,19 @@ def cabecera(titulo, estado, detalle=""):
             f'<div class="refrescar">{icono("refrescar")}</div></div>')
 
 
-def pestanas(activa):
+ROTULO_PESTANA = {"agentes": "Agentes", "servidores": "Servidores", "cloudflare": "Cloudflare"}
+
+
+def pestanas_visibles():
+    """Las pestañas que se dibujan: Cloudflare solo sale si ya hay una lectura suya (token guardado y sin apagar)."""
+    from . import cloudflare_uso
+    return G.PESTANAS + (("cloudflare",) if cloudflare_uso.en_cache().get("configurado") else ())
+
+
+def pestanas(activa, nombres=None):
+    nombres = nombres or pestanas_visibles()
     return ('<div class="pest"><div class="seg">'
-            f'<span class="{"on" if activa == "agentes" else ""}">Agentes</span>'
-            f'<span class="{"on" if activa == "servidores" else ""}">Servidores</span></div></div>')
+            + "".join(f'<span class="{"on" if n == activa else ""}">{ROTULO_PESTANA[n]}</span>' for n in nombres) + '</div></div>')
 
 
 def tarjeta(ic, etiqueta, valor, sub, estado="gris"):

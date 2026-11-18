@@ -2,6 +2,25 @@
 
 Las versiones anteriores a la 0.3.0 están en las etiquetas de git (`v0.1.1`, `v0.1.2`, `v0.2.0`).
 
+## Sin publicar
+
+### Planes
+- **Interruptor por proveedor:** cada plan se puede apagar en Ajustes. Apagado no sale en planes ni en cuotas ni se consulta su API,
+  y conserva sus cuotas para cuando vuelva.
+- **Modelos sin escribirlos a mano:** cada plan enseña los modelos que ha usado según los logs, y el plan de NaN reconoce además todo
+  su catálogo (`GET /v1/models`). Los patrones manuales quedan como opción avanzada.
+
+### Cloudflare
+- **Pestaña Cloudflare** en el panel y en el desplegable: consumo del mes de Workers, Workers AI, KV, R2 y D1 frente al cupo de
+  Workers Paid, gasto estimado con las tarifas públicas, proyección a fin de mes y quién genera el gasto extra, con el detalle por
+  worker, modelo, cubo, base y espacio.
+- Se conecta con un token de solo lectura («Account Analytics: Read») guardado en el Llavero y el ID de cuenta, desde Ajustes.
+
+### Límites conocidos
+- El gasto de Cloudflare es una estimación sobre el mes natural: no incluye Durable Objects, colas ni otros productos, y la factura
+  real la calcula Cloudflare.
+- Los clics de la pestaña Cloudflare del desplegable no se han probado en vivo en la barra de menús.
+
 ## 0.5.1 — 2026-10-16
 
 La ventana del panel en Windows pasa a ser una ventana normal, a partir de la contribución de @ai-2you (PR #7).

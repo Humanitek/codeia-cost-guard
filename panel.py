@@ -94,6 +94,7 @@ def construye(d):
 {_leer("ajustes.js")}
 {_leer("historico.js")}
 {_leer("servidores.js")}
+{_leer("cloudflare.js")}
 </script></body></html>"""
     return html
 

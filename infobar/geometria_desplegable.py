@@ -19,15 +19,18 @@ BOTONES_ALTO = 50           # fila de botones (sus 38 pt + aire)
 MENU_ANCHO = 44             # zona del ⋯ a la derecha de la linea final
 
 
-def zonas(n_botones, con_selector):
+PESTANAS = ("agentes", "servidores")     # las de siempre; con Cloudflare configurado hay una tercera
+
+
+def zonas(n_botones, con_selector, pestanas=PESTANAS):
     """Zonas de clic en puntos, origen ARRIBA-izquierda: [(nombre, x0, y0, x1, y1, ancla)].
 
     ancla "arriba": y medida desde el borde superior; "abajo": desde el inferior. Asi el mismo
     rectangulo vale para cualquier alto de desplegable."""
     z = [("refrescar", REFRESCAR_X, 8, REFRESCAR_X + REFRESCAR_ANCHO, CABECERA_ALTO - 8, "arriba")]
-    mitad = MARGEN + (ANCHO - 2 * MARGEN) / 2
-    z.append(("pestana:agentes", MARGEN, PESTANAS_Y, mitad, PESTANAS_Y + PESTANAS_ALTO, "arriba"))
-    z.append(("pestana:servidores", mitad, PESTANAS_Y, ANCHO - MARGEN, PESTANAS_Y + PESTANAS_ALTO, "arriba"))
+    ancho_p = (ANCHO - 2 * MARGEN) / len(pestanas)
+    for i, nombre in enumerate(pestanas):
+        z.append((f"pestana:{nombre}", MARGEN + i * ancho_p, PESTANAS_Y, MARGEN + (i + 1) * ancho_p, PESTANAS_Y + PESTANAS_ALTO, "arriba"))
     if con_selector:
         z.append(("selector", MARGEN, SELECTOR_Y, ANCHO - MARGEN, SELECTOR_Y + SELECTOR_ALTO, "arriba"))
     if n_botones:
@@ -39,10 +42,10 @@ def zonas(n_botones, con_selector):
     return z
 
 
-def zona_en(x, y_desde_abajo, alto_total, n_botones, con_selector):
+def zona_en(x, y_desde_abajo, alto_total, n_botones, con_selector, pestanas=PESTANAS):
     """Nombre de la zona bajo un clic de AppKit (vista sin voltear: y=0 es el borde INFERIOR)."""
     y_desde_arriba = alto_total - y_desde_abajo
-    for nombre, x0, a, x1, b, ancla in zonas(n_botones, con_selector):
+    for nombre, x0, a, x1, b, ancla in zonas(n_botones, con_selector, pestanas):
         if not x0 <= x < x1:
             continue
         if ancla == "arriba" and a <= y_desde_arriba < b:

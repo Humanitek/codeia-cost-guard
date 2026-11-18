@@ -7,7 +7,7 @@ cambia imagenes. Una excepcion se registra y el bucle sigue: el hilo no muere.
 """
 import threading, time, traceback
 
-from . import cuota_nan, desplegable_png, permisos, presupuestos, servidores_avisos, servidores_ciclo, servidores_panel, webs_sondeo
+from . import cloudflare_uso, cuota_nan, desplegable_png, permisos, presupuestos, servidores_avisos, servidores_ciclo, servidores_panel, webs_sondeo
 from . import servidores_registro, sombra
 from .agregacion import ULTIMOS, informe
 from .config_y_estado import cfg, leer_ui, log
@@ -35,6 +35,7 @@ class Trabajador(threading.Thread):
         self._evento.set()                  # la primera vuelta, nada mas arrancar
         self._webs = threading.Thread(target=self._sondea_webs, name="infobar-webs", daemon=True)
         self._paneles = threading.Thread(target=self._lee_paneles, name="infobar-paneles", daemon=True)
+        self._cloudflare = threading.Thread(target=self._lee_cloudflare, name="infobar-cloudflare", daemon=True)
 
     def _sondea_webs(self):
         """Hilo propio: las webs se sondean con su calendario (5 min; 60 s mientras fallan), sin esperar al ciclo SSH ni frenarlo."""
@@ -57,6 +58,19 @@ class Trabajador(threading.Thread):
                 log("panel: fallo inesperado")
             time.sleep(DESPIERTA)
 
+    def _lee_cloudflare(self):
+        """Hilo propio: el consumo de Cloudflare se lee cada 10 min (y solo si hay token), sin frenar a los demás."""
+        visto = None
+        while True:
+            try:
+                d = cloudflare_uso.leer()
+                if d.get("ok_en") != visto:
+                    visto = d.get("ok_en")
+                    self.pide("render")
+            except Exception:
+                log("cloudflare: fallo inesperado")
+            time.sleep(DESPIERTA)
+
     def pide(self, *cosas):
         """'refrescar' (todo ya, servidores incluidos), 'render' (repintar los servidores), 'agentes' (repintar Agentes),
         'plegar' (repintar ya el servidor que se ve; corta la tanda en curso) o 'tema' (mirar si cambió el tema)."""
@@ -67,6 +81,7 @@ class Trabajador(threading.Thread):
     def run(self):
         self._webs.start()
         self._paneles.start()
+        self._cloudflare.start()
         r, ultimo_scan, ultimo_render, gen_srv = None, 0.0, 0.0, None
         migrado, ultima_purga, ultimo_aviso = False, 0.0, 0.0
         while True:

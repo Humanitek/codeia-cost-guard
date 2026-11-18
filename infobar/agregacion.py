@@ -238,8 +238,12 @@ def agregar(vistos, nuevos=0, periodo=None):
     for n, t2 in cinco["fam"].items():          # la ventana de 5 h, por proveedor
         por_prov[n]["cinco_h"] = t2
     lim_prov = {p["nombre"]: (p["limite_5h_tokens"], p["limite_semana_tokens"]) for p in provs}
+    # Un plan apagado en Ajustes (suscripcion cancelada) no sale en planes ni en cuotas, ni se consulta su API.
+    apagados = {p["nombre"] for p in provs if not p.get("activo", True)}
     provs_out = {}
     for n, x in sorted(por_prov.items(), key=lambda kv: -kv[1]["cinco_h"]):
+        if n in apagados:
+            continue
         l5, ls = lim_prov.get(n, (0, 0))
         provs_out[n] = {"cinco_h": x["cinco_h"], "semana": x["semana"], "hoy": x["hoy"], "mes": x["mes"],
                         "modelos": sorted(x["modelos"]),
@@ -347,8 +351,10 @@ def agregar(vistos, nuevos=0, periodo=None):
     # publica su API. Sin esto, un mes sin logs locales dejaria la seccion de cuotas vacia.
     for _pcf in (cfg().get("proveedores") or []):
         _nombre = str(_pcf.get("nombre") or "")
+        if not _nombre or plan_final(_nombre, [x["nombre"] for x in provs]) in apagados:
+            continue
         _vivo = _vivo_de(_pcf)
-        if not _nombre or _vivo is None:
+        if _vivo is None:
             continue
         _mc, _cfuente = _cuotas_de(_nombre, _pcf, _vivo)
         if not _mc:

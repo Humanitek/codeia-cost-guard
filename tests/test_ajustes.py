@@ -64,6 +64,16 @@ class Normalizar(unittest.TestCase):
              "proyectos": {}, "limite_hora_tokens": 8000000, "ignorar": ["synthetic", "<synthetic>", "sin-modelo"]}
         self.assertEqual(ajustes.normalizar(n, act), {"proveedores": [{"nombre": "NaN", "modelos": []}], "aliases": {}})
 
+    def test_un_plan_apagado_se_guarda_y_al_encenderlo_no_deja_rastro(self):
+        act = {"proveedores": [{"nombre": "NaN", "modelos": [], "cuotas_mes": {"glm": 5}}], "aliases": {}}
+        apagado = ajustes.normalizar({"proveedores": [{"nombre": "NaN", "activo": False}], "aliases": {}}, act)
+        self.assertIs(apagado["proveedores"][0]["activo"], False)
+        self.assertEqual(apagado["proveedores"][0]["cuotas_mes"], {"glm": 5})       # las cuotas se conservan para cuando vuelva
+        encendido = ajustes.normalizar({"proveedores": [{"nombre": "NaN", "activo": True}], "aliases": {}}, apagado)
+        self.assertNotIn("activo", encendido["proveedores"][0])
+        with self.assertRaises(ValueError):
+            ajustes.normalizar({"proveedores": [{"nombre": "NaN", "activo": "no"}], "aliases": {}}, act)
+
     def test_uso_api_vacio_lo_quita(self):
         act = {"proveedores": [{"nombre": "NaN", "uso_api": "nan"}], "aliases": {}}
         out = ajustes.normalizar({"proveedores": [{"nombre": "NaN", "uso_api": ""}], "aliases": {}}, act)
@@ -161,6 +171,7 @@ class ServidorAjustes(unittest.TestCase):
         self.assertNotIn("x" * 20, json.dumps(d))
         self.assertIsInstance(d["scripts"]["ultima"], int)          # la versión del script que trae la app, para avisar en cada servidor
         self.assertIsInstance(d["scripts"]["servidores"], dict)
+        self.assertIsInstance(d["modelos_plan"], dict)              # modelos vistos en los logs por plan, para no escribirlos a mano
 
     def test_ajustes_trae_el_estado_de_las_copias(self):
         st, d = self._pide("GET", "/ajustes")

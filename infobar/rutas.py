@@ -16,6 +16,8 @@ CONFIG = f"{RAIZ}/config.json"
 CONFIG_SERVIDORES = f"{RAIZ}/servidores.json"
 LOG = f"{RAIZ}/logs/costbar.log"
 NAN_USO_CACHE = f"{RAIZ}/logs/nan_uso.json"
+NAN_MODELOS_CACHE = f"{RAIZ}/logs/nan_modelos.json"
+CLOUDFLARE_CACHE = f"{RAIZ}/logs/cloudflare_uso.json"
 UI_ESTADO = f"{RAIZ}/logs/ui_estado.json"
 SERVIDORES = f"{RAIZ}/logs/servidores.json"
 

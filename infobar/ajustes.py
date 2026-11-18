@@ -98,6 +98,12 @@ def normalizar(nuevo, actual, servidores_actuales=None):
             q.pop("uso_api", None)
             if u:
                 q["uso_api"] = u
+        if "activo" in p:
+            if not isinstance(p["activo"], bool):
+                raise ValueError(f"{nombre}.activo: tiene que ser verdadero o falso")
+            q.pop("activo", None)                # activo es lo normal: solo se guarda el plan apagado
+            if not p["activo"]:
+                q["activo"] = False
         if "cuotas_mes" in p:
             cm = p["cuotas_mes"]
             if not isinstance(cm, dict):
@@ -140,6 +146,16 @@ def normalizar(nuevo, actual, servidores_actuales=None):
         if not isinstance(nuevo["avisos_servidores"], bool):
             raise ValueError("avisos_servidores: tiene que ser verdadero o falso")
         out["avisos_servidores"] = nuevo["avisos_servidores"]
+    if "cloudflare" in nuevo:
+        cf = nuevo["cloudflare"]
+        if not isinstance(cf, dict) or not isinstance(cf.get("activo", True), bool):
+            raise ValueError("cloudflare: tiene que ser {activo, cuenta}")
+        cuenta = str(cf.get("cuenta") or "").strip().lower()
+        if cuenta and not re.fullmatch(r"[0-9a-f]{32}", cuenta):
+            raise ValueError("cloudflare.cuenta: el ID de cuenta son 32 caracteres (0-9, a-f); está en el panel de Cloudflare")
+        limpio = dict({"cuenta": cuenta} if cuenta else {}, **({} if cf.get("activo", True) else {"activo": False}))
+        if limpio or "cloudflare" in actual:
+            out["cloudflare"] = limpio
     for k in PASAN:
         if k in nuevo:
             out[k] = nuevo[k]

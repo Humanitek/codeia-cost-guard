@@ -76,6 +76,7 @@ function pintarCab(v){
   const lim = (D.limites || {}).limite_hora_tokens || 0, alto = lim && D.ritmo >= lim;
   const C = {panel: ["Mis agentes", alto ? `Ritmo alto: ${fmt(D.ritmo)}/h · el límite es ${fmt(lim)}/h` : `Última hora: ${fmt(D.ritmo)} tokens`, alto ? "ambar" : "", "pulso"],
     historico: ["Histórico", "Consumo guardado por día, semana o mes", "", "cal"], servidores: ["Mis servidores", "Salud, webs y seguridad de tus VPS", "", "escudo"],
+    cloudflare: ["Cloudflare", "Consumo y gasto estimado de Workers Paid: Workers, Workers AI, R2, D1 y KV", "", "web"],
     ajustes: ["Ajustes", "Planes, claves, servidores y avisos · se guardan en tu equipo", "", "ajustes"]}[v] || null;
   if(!C) return;
   document.getElementById("titulo").textContent = C[0];

@@ -14,7 +14,7 @@ import subprocess
 
 SERVICIO = "infobar"
 MAX_CLAVE = 1024          # el Administrador de credenciales admite 2560 bytes; una clave de API real queda muy por debajo
-_CUENTA_VALIDA = re.compile(r"^(nan|prov:[a-z0-9-]{1,40}|(dokploy|easypanel):[A-Za-z0-9.-]+(:\d+)?)$")
+_CUENTA_VALIDA = re.compile(r"^(nan|cloudflare|prov:[a-z0-9-]{1,40}|(dokploy|easypanel):[A-Za-z0-9.-]+(:\d+)?)$")
 
 
 class _Llavero:

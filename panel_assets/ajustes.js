@@ -18,7 +18,7 @@
     .then(r => r.ok || r.status === 400 || r.status === 409 || r.status === 429 ? r.json() : r.text().then(t => ({ok: false, error: t || ("HTTP " + r.status)})));
 
   let enHistorico = false, vistaActual = "panel";
-  const VISTAS = ["panel", "historico", "servidores", "ajustes"];
+  const VISTAS = ["panel", "historico", "servidores", "cloudflare", "ajustes"];
   window.vista = function(v){
     if (!VISTAS.includes(v)) v = "panel";
     vistaActual = v; enAjustes = v === "ajustes"; enHistorico = v === "historico";
@@ -27,6 +27,7 @@
     if (enAjustes) cargar();
     if (enHistorico && window.cargarHistorico) window.cargarHistorico();
     if (v === "servidores" && window.cargarServidores) window.cargarServidores();
+    if (v === "cloudflare" && window.cargarCloudflare) window.cargarCloudflare();
   };
   const ERRORES_PANEL = {sin_clave: "No hay clave guardada.", clave_invalida: "La clave guardada no tiene un formato válido.", url_invalida: "La URL del panel no es válida (https con un nombre público).",
     red: "No se pudo conectar con el panel.", tls: "El certificado del panel no es válido: usa un dominio con HTTPS válido.", timeout: "El panel tardó demasiado en contestar.", plazo: "El panel tardó demasiado en contestar.",
@@ -71,16 +72,37 @@
       ? h("label", {style: "flex-direction:row;align-items:center;gap:8px;text-transform:none;letter-spacing:0;color:var(--texto)"},
           h("input", {type: "checkbox", "data-k": "uso_api", checked: !!p.uso_api}), "Leer el consumo real por API (cuota en vivo)")
       : h("span", {class: "chip", title: "Este proveedor aún no tiene lectura por API: su consumo sale de los logs de tus agentes"}, "consumo desde los logs");
-    return h("div", {class: "prov", "data-nombre": p.nombre},
+    // Plan activo: apagado (suscripción cancelada) deja de verse en la barra, el desplegable y el panel; conserva sus cuotas por si vuelve.
+    const activo = p.activo !== false;
+    const interruptor = h("input", {type: "checkbox", class: "interruptor", "data-k": "activo", checked: activo, "aria-label": "Plan activo",
+      onchange: e => { tarjeta.classList.toggle("apagado", !e.target.checked); rotulo.textContent = e.target.checked ? "Activo" : "Apagado"; }});
+    const rotulo = h("span", {}, activo ? "Activo" : "Apagado");
+    // Los modelos salen solos de los logs; los patrones a mano solo hacen falta si un log no dice de qué plan es el modelo.
+    const vistos = (A.modelos_plan || {})[p.nombre] || [];
+    const detectados = h("div", {class: "ancho-total modelos-vistos"}, h("span", {class: "rot"}, "Modelos detectados en tus logs"),
+      vistos.length ? h("div", {class: "chips"}, ...vistos.map(m => h("span", {class: "chip"}, m)))
+                    : h("span", {class: "ayuda-g"}, "Ninguno en los últimos 30 días."));
+    // Catálogo del proveedor (hoy solo NaN lo publica y pide clave): con él no hace falta ningún patrón a mano.
+    const catalogo = !info.api_soportada ? null : h("div", {class: "ancho-total modelos-vistos"},
+      h("span", {class: "rot"}, "Catálogo del proveedor" + (info.catalogo && info.catalogo.length ? " (" + info.catalogo.length + " modelos)" : "")),
+      info.catalogo && info.catalogo.length ? h("div", {class: "chips"}, ...info.catalogo.map(m => h("span", {class: "chip"}, m)))
+        : h("span", {class: "ayuda-g"}, info.clave_guardada ? "No pude leer el catálogo con la clave guardada (¿caducada o sin conexión?)."
+                                                              : "Guarda la API key para leer todos los modelos del proveedor."));
+    const tarjeta = h("div", {class: "prov" + (activo ? "" : " apagado"), "data-nombre": p.nombre},
       h("div", {class: "prov-cab"},
+        h("label", {class: "plan-activo", title: "Apagado: el plan no se muestra ni se le consulta el consumo. Sus cuotas se conservan."}, interruptor, rotulo),
         h("input", {class: "nombre-prov", "data-k": "nombre", value: p.nombre, maxlength: 40, "aria-label": "Nombre del plan", disabled: !!info.clave_guardada,
           title: info.clave_guardada ? "Tiene una clave en el Llavero guardada con este nombre: quítala antes de renombrar el plan" : "Nombre del plan: es el que ves en todo el panel"}),
         k.estado, api),
       h("div", {class: "campos"},
-        h("label", {class: "ancho-total"}, "Modelos que cuentan (separados por coma)", h("input", {class: "ancho", "data-k": "modelos", value: (p.modelos || []).join(", ")})),
+        detectados, catalogo,
+        h("details", {class: "ancho-total"}, h("summary", {}, "Patrones manuales (avanzado)"),
+          h("label", {}, "Texto que identifica a los modelos de este plan cuando el log no dice de qué plan son (separados por coma)",
+            h("input", {class: "ancho", "data-k": "modelos", value: (p.modelos || []).join(", ")}))),
         campo("Límite 5 h (tokens)", num("limite_5h_tokens")), campo("Límite semanal", num("limite_semana_tokens")), campo("Límite mensual", num("limite_mes_tokens")),
         info.api_soportada ? h("label", {class: "ancho-total"}, "Cuotas mensuales por modelo (modelo = tokens, una por línea)", cuotas) : null),
       k.fila);
+    return tarjeta;
   }
 
   /* Alta guiada: comprueba el servidor (solo lectura) y ofrece instalar con tu clave SSH o hacerlo en el Terminal. La contraseña NUNCA pasa por esta página.
@@ -381,6 +403,26 @@
       h("option", {value: "", selected: !actual}, "Como lo nombra el log"), ...nombres.map(n => h("option", {value: n, selected: n === actual}, n)));
   }
 
+  /* Cloudflare: token de SOLO lectura en el Llavero y, si el token ve varias cuentas, el ID de la cuenta. El consumo se ve en Servidores. */
+  function seccionCloudflare(c){
+    const cf = c.cloudflare || {}, info = A.cloudflare = A.cloudflare || {clave_guardada: false};
+    const k = filaClave({cuenta: "cloudflare"}, info, "Token de API de Cloudflare (solo lectura)");
+    const activo = cf.activo !== false;
+    const rotulo = h("span", {}, activo ? "Activo" : "Apagado");
+    return h("section", {}, h("h2", {}, "Cloudflare"),
+      h("p", {class: "ayuda"}, "Consumo del mes de Workers, KV, R2, D1 y Workers AI, con el gasto estimado según las tarifas públicas de Workers Paid. Se ve en la pestaña Cloudflare."),
+      h("div", {class: "prov"},
+        h("div", {class: "prov-cab"}, h("strong", {}, "Cuenta de Cloudflare"), k.estado,
+          h("label", {class: "plan-activo", title: "Apagado: no se consulta Cloudflare ni se muestra su consumo."},
+            h("input", {type: "checkbox", class: "interruptor", id: "cf-activo", checked: activo, "aria-label": "Cloudflare activo",
+              onchange: e => { rotulo.textContent = e.target.checked ? "Activo" : "Apagado"; }}), rotulo)),
+        h("div", {class: "campos"},
+          h("label", {class: "ancho-total"}, "ID de cuenta (necesario con un token de solo analítica, que no puede averiguarlo por sí mismo)",
+            h("input", {class: "ancho", id: "cf-cuenta", value: cf.cuenta || "", placeholder: "32 caracteres; en dash.cloudflare.com, menú ⋯ junto al nombre de la cuenta → Copiar ID de cuenta", maxlength: 32, autocomplete: "off"}))),
+        k.fila,
+        h("p", {class: "ayuda", style: "margin-top:10px"}, "Crea el token en dash.cloudflare.com → Mi perfil → Tokens de API → Crear token personalizado, con permiso de cuenta «Account Analytics: Read» y nada más. Con ese permiso CostGuard solo puede leer estadísticas: no puede desplegar, borrar ni cambiar nada.")));
+  }
+
   function secciones(){
     const c = A.config;
     const orig = Object.entries(A.origenes).sort((a, b) => b[1] - a[1]);
@@ -421,6 +463,7 @@
           h("label", {}, "IPs conocidas (coma): una sesión desde otra sale en ámbar", h("input", {class: "ancho", id: "g-ips", value: (c.ips_conocidas || []).join(", ")})),
           h("label", {}, "Revisión normal (s)", h("input", {class: "num-in", id: "g-int-n", value: c.intervalo_normal_s || "", placeholder: "300", inputmode: "numeric"})),
           h("label", {}, "Revisión en incidencia (s)", h("input", {class: "num-in", id: "g-int-i", value: c.intervalo_incidencia_s || "", placeholder: "60", inputmode: "numeric"})))),
+      seccionCloudflare(c),
       h("section", {}, h("h2", {}, "Copias cifradas"),
         h("p", {class: "ayuda"}, "Copias diarias de la base de consumo, cifradas con una clave pública. La clave privada no está en este equipo."),
         copias(A.copias)),
@@ -436,7 +479,7 @@
      de la tarjeta como en el resto del panel. Las secciones ocultas siguen en la página: leer() recoge todos los campos. */
   let seccionActiva = null;
   const ICONO_SECCION = {"Proveedores, planes y claves": "moneda", "Origen (según el log) → plan": "ruta", "Proyectos": "carpeta", "Presupuestos": "hucha",
-    "Servidores (VPS)": "servidor", "Copias cifradas": "copia", "General": "ajustes"};
+    "Servidores (VPS)": "servidor", "Cloudflare": "web", "Copias cifradas": "copia", "General": "ajustes"};
   const iconoDom = n => new DOMParser().parseFromString(icono(n).replace("<svg ", "<svg xmlns=\"http://www.w3.org/2000/svg\" "), "image/svg+xml").documentElement;
   function pinta(){
     const nodos = secciones().filter(Boolean);
@@ -472,6 +515,7 @@
         }
         else if (k === "modelos") p.modelos = lista(i.value);
         else if (k === "uso_api") p.uso_api = i.checked ? "nan" : "";
+        else if (k === "activo") p.activo = i.checked;
         else if (k === "cuotas_mes") { p.cuotas_mes = {}; i.value.split("\n").forEach(l => { const m = l.split("="); if (m.length === 2 && m[0].trim()) p.cuotas_mes[m[0].trim()] = entero(m[1]); }); }
         else p[k] = entero(i.value);
       });
@@ -510,6 +554,7 @@
       const ips = lista($("g-ips").value); if (ips.length || c.ips_conocidas) c.ips_conocidas = ips;
       [["g-int-n", "intervalo_normal_s"], ["g-int-i", "intervalo_incidencia_s"]].forEach(([id, k]) => { const v = entero($(id).value); if (v) c[k] = v; else delete c[k]; });
     }
+    if ($("cf-cuenta")) c.cloudflare = {activo: $("cf-activo").checked, cuenta: $("cf-cuenta").value.trim().toLowerCase()};
     if ($("g-hora")) { c.limite_hora_tokens = entero($("g-hora").value); c.ignorar = lista($("g-ignorar").value); }
     return avisos;
   }

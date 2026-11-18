@@ -1,7 +1,7 @@
 """Planes/proveedores, alias, CCS (Claude Code Switch) y tarifas del equivalente API."""
 import collections, glob, json, os, re, time
 
-from . import rutas
+from . import ajustes, cuota_nan, rutas
 from .config_y_estado import cfg
 
 
@@ -140,8 +140,15 @@ def proveedores_de(c, modelos=()):
     for p in lista:
         if not isinstance(p, dict):
             continue
+        patrones = [str(m).lower() for m in (p.get("modelos") or [])]
+        activo = p.get("activo") is not False
+        # un plan de NaN encendido reconoce ademas todo su catalogo (GET /v1/models): no hay que escribirlo a mano
+        if activo and ajustes.api_soportada(p):
+            patrones += [m for m in (cuota_nan.modelos_nan() or []) if m not in patrones]
         salida.append({"nombre": str(p.get("nombre") or "?"),
-                       "modelos": [str(m).lower() for m in (p.get("modelos") or [])],
+                       "modelos": patrones,
+                       # un plan apagado sigue reconociendo sus modelos (no reaparecen como familia suelta), pero no se muestra
+                       "activo": activo,
                        "limite_5h_tokens": p.get("limite_5h_tokens") or 0,
                        "limite_semana_tokens": p.get("limite_semana_tokens") or 0,
                        "cuotas_mes": {str(k).lower(): (v or 0) for k, v in (p.get("cuotas_mes") or {}).items()}})
