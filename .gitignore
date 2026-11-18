@@ -24,3 +24,17 @@ consumo.sqlite*
 *.sqlite-wal
 *.sqlite-shm
 copias/
+
+# macOS
+.DS_Store
+
+# claves y credenciales locales: nunca en git
+id_rsa*
+id_ed25519*
+*_rsa
+*.pem
+*.key
+*.ppk
+.env
+claves/
+dokploy-*
