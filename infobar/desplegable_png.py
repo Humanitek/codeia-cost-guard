@@ -9,9 +9,10 @@ medio escribir; las tandas viejas se borran despues.
 """
 import glob, os, re, shutil, subprocess, tempfile, time
 
-from . import desplegable_agentes, desplegable_servidores, permisos, plataforma, rutas
+from . import desplegable_agentes, desplegable_cloudflare, desplegable_servidores, permisos, plataforma, rutas
 from . import geometria_desplegable as G
 from .config_y_estado import log
+from .desplegable_comun import pestanas_visibles
 
 NAVEGADORES = (
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -115,7 +116,7 @@ def renderizar(r, cache, servidores_cfg, solo_servidor=None, previo=None, temas=
     gen = int(time.time() * 1000)
     ahora = time.time()
     out = {"gen": gen, "agentes": dict((previo or {}).get("agentes") or {}),
-           "servidores": dict((previo or {}).get("servidores") or {})}
+           "servidores": dict((previo or {}).get("servidores") or {}), "cloudflare": dict((previo or {}).get("cloudflare") or {})}
     def pinta(html, ruta):
         if parar is not None and parar():
             raise _Cortado
@@ -127,6 +128,9 @@ def renderizar(r, cache, servidores_cfg, solo_servidor=None, previo=None, temas=
     nuevas, repintados = out.pop("_nuevas"), out.pop("_repintados")
     if "agentes" in repintados:
         out["agentes"] = {t: v for t, v in out["agentes"].items() if t in temas}
+    # la pestaña Cloudflare solo existe con Cloudflare configurado; repintada, se queda con los temas pedidos
+    out["cloudflare"] = ({} if "cloudflare" not in pestanas_visibles() else
+                         {t: v for t, v in out["cloudflare"].items() if t in temas} if "cloudflare" in repintados else out["cloudflare"])
     out["servidores"] = {n: ({t: v for t, v in v.items() if t in temas} if n in repintados else v)
                          for n, v in out["servidores"].items()
                          if n in {s["nombre"] for s in servidores_cfg} or (not servidores_cfg and n == "")}
@@ -140,13 +144,21 @@ class _Cortado(Exception):
 
 def _pinta_temas(r, cache, servidores_cfg, solo_servidor, temas, out, gen, ahora, pinta):
     out["_nuevas"], out["_repintados"] = 0, set()
+    visibles = pestanas_visibles()         # con cada imagen va la lista de pestañas que lleva dibujada: sus zonas de clic salen de ahí
     for tema in temas:
         oscuro = tema == "oscuro"
+        if "cloudflare" in visibles and not solo_servidor:
+            ruta = os.path.join(carpeta(), f"{gen}-cloudflare-{tema}.png")
+            tam = pinta(desplegable_cloudflare.documento(oscuro, ahora), ruta)
+            if tam:
+                out["cloudflare"][tema] = (ruta, tam[0], tam[1], len(desplegable_cloudflare.BOTONES), False, [], visibles)
+                out["_nuevas"] += 1
+                out["_repintados"].add("cloudflare")
         if r is not None:
             ruta = os.path.join(carpeta(), f"{gen}-agentes-{tema}.png")
             tam = pinta(desplegable_agentes.documento(r, oscuro, ahora), ruta)
             if tam:
-                out["agentes"][tema] = (ruta, tam[0], tam[1], len(desplegable_agentes.BOTONES), False, [])
+                out["agentes"][tema] = (ruta, tam[0], tam[1], len(desplegable_agentes.BOTONES), False, [], visibles)
                 out["_nuevas"] += 1
                 out["_repintados"].add("agentes")
         nombres = [s["nombre"] for s in servidores_cfg] or [""]
@@ -158,7 +170,7 @@ def _pinta_temas(r, cache, servidores_cfg, solo_servidor, temas, out, gen, ahora
             if tam:
                 # con la imagen va la forma de sus zonas de clic (botones y selector de ESA imagen)
                 botones = len(desplegable_servidores.BOTONES) if servidores_cfg else 0
-                out["servidores"][nombre] = dict(out["servidores"].get(nombre) or {}, **{tema: (ruta, tam[0], tam[1], botones, bool(servidores_cfg), tam[2])})
+                out["servidores"][nombre] = dict(out["servidores"].get(nombre) or {}, **{tema: (ruta, tam[0], tam[1], botones, bool(servidores_cfg), tam[2], visibles)})
                 out["_nuevas"] += 1
                 out["_repintados"].add(nombre)
 
@@ -172,6 +184,7 @@ def limpiar(conjunto):
     imagenes nuevas aun no entregadas no deben desaparecer."""
     vivos = {v[0] for v in (conjunto or {}).get("agentes", {}).values()}
     vivos |= {v[0] for t in (conjunto or {}).get("servidores", {}).values() for v in t.values()}
+    vivos |= {v[0] for v in (conjunto or {}).get("cloudflare", {}).values()}
     limite = time.time() - VIDA_PNG
     for f in glob.glob(os.path.join(carpeta(), "*.png")):
         if f not in vivos and os.path.getmtime(f) < limite:

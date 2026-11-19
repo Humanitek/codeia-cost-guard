@@ -33,6 +33,7 @@ import costbar
 from infobar import desplegable_png, icono_barra, servidores_ciclo
 from infobar import geometria_desplegable as G
 from infobar.desplegable_agentes import BOTONES as BOTONES_AGENTES
+from infobar.desplegable_cloudflare import BOTONES as BOTONES_CLOUDFLARE
 from infobar.desplegable_servidores import BOTONES as BOTONES_SERVIDORES
 from infobar.servidores import url_valida, errores_servidores
 from infobar.trabajador_barra import Trabajador
@@ -248,7 +249,9 @@ class Barra(NSObject):
 
     @objc.python_method
     def pestana(self):
-        return costbar.leer_ui().get("pestana") or "agentes"
+        p = costbar.leer_ui().get("pestana") or "agentes"
+        # la de Cloudflare solo existe mientras haya imagen suya (token guardado y sin apagar)
+        return "agentes" if p == "cloudflare" and not (getattr(self, "conjunto", None) or {}).get("cloudflare") else p
 
     @objc.python_method
     def servidores(self):
@@ -268,6 +271,8 @@ class Barra(NSObject):
         tema = tema_activo()
         if self.pestana() == "servidores":
             imgs = self.conjunto.get("servidores", {}).get(self.servidor_activo()) or {}
+        elif self.pestana() == "cloudflare":
+            imgs = self.conjunto.get("cloudflare") or {}
         else:
             imgs = self.conjunto.get("agentes") or {}
         img = imgs.get(tema)
@@ -295,7 +300,8 @@ class Barra(NSObject):
             return
         ruta, ancho, alto, n_botones, con_selector, *resto = img
         secciones = resto[0] if resto else []
-        self.forma = (n_botones, con_selector, secciones)
+        # las pestañas que lleva dibujadas ESTA imagen (dos o tres): sus zonas de clic salen de ahí
+        self.forma = (n_botones, con_selector, secciones, resto[1] if len(resto) > 1 else G.PESTANAS)
         clave = (self.pestana(), self.servidor_activo())
         desde_arriba = None
         if self._clave_vista == clave and self._alto_prev:
@@ -340,14 +346,14 @@ class Barra(NSObject):
     def clicEn_(self, p):
         if not getattr(self, "forma", None):
             return
-        n_botones, con_selector, secciones = self.forma
-        botones = (BOTONES_SERVIDORES if self.pestana() == "servidores" else BOTONES_AGENTES)[:n_botones]
+        n_botones, con_selector, secciones, pestanas = self.forma
+        botones = {"servidores": BOTONES_SERVIDORES, "cloudflare": BOTONES_CLOUDFLARE}.get(self.pestana(), BOTONES_AGENTES)[:n_botones]
         y_arriba = self.alto_mostrado - p.y / self.escala
         if G.MARGEN <= p.x / self.escala < G.ANCHO - G.MARGEN:
             for ident, y0, y1 in secciones:
                 if y0 <= y_arriba < y1:                 # el título de una sección plegable: se abre o se cierra
                     return self.alterna(ident)
-        zona = G.zona_en(p.x / self.escala, p.y / self.escala, self.alto_mostrado, n_botones, con_selector)
+        zona = G.zona_en(p.x / self.escala, p.y / self.escala, self.alto_mostrado, n_botones, con_selector, pestanas)
         log(f"clic en: {zona}")
         if zona is None:
             return
@@ -378,6 +384,8 @@ class Barra(NSObject):
         s = next((x for x in self.servidores() if x["nombre"] == self.servidor_activo()), None)
         if texto == "Abrir panel":
             self.abre(costbar.url_panel())
+        elif texto == "Ver detalle":
+            self.abre(costbar.url_panel("cloudflare"))
         elif texto == "Guía":
             self.abre(costbar.url_panel("guia"))
         elif s and texto == "Panel" and s.get("panel_url"):

@@ -238,7 +238,23 @@ select{-webkit-appearance:none;appearance:none;padding-right:30px;cursor:pointer
 /* tres columnas iguales: los modelos y las cuotas ocupan la fila entera, los límites una columna cada uno */
 .campos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 14px;align-items:end}
 .campos label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--suave);min-width:0}
-.campos label.ancho-total{grid-column:1/-1}
+.campos label.ancho-total,.campos .ancho-total{grid-column:1/-1}
+/* interruptor de plan activo: apagado, la tarjeta se queda en su cabecera */
+input.interruptor{-webkit-appearance:none;appearance:none;width:34px;height:20px;border-radius:10px;background:var(--gris);border:0;padding:0;margin:0;position:relative;cursor:pointer;flex:none;transition:background .15s}
+input.interruptor::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s}
+input.interruptor:checked{background:var(--marca)} input.interruptor:checked::after{transform:translateX(14px)}
+input.interruptor:focus-visible{outline:2px solid var(--marca);outline-offset:2px}
+.prov-cab label.plan-activo{margin-left:auto;order:9;color:var(--suave)}
+.prov.apagado>.campos,.prov.apagado>.clave{display:none} .prov.apagado .prov-cab{margin-bottom:0}
+.prov.apagado .prov-cab>:not(.plan-activo){opacity:.5}
+.modelos-vistos{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--suave)} .modelos-vistos .chips{display:flex;flex-wrap:wrap;gap:6px}
+.campos details label{margin-top:8px}
+/* pestaña Cloudflare: barra de reparto dentro de una celda y columnas por día */
+.cf-parte{display:flex;align-items:center;gap:8px;min-width:120px} .cf-parte .prog{flex:1;margin:0;min-width:60px} .cf-parte>span:last-child{font-variant-numeric:tabular-nums;min-width:3.2em;text-align:right}
+.cf-dias{display:flex;align-items:flex-end;gap:3px;height:120px;padding-top:6px}
+.cf-dia{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;min-width:0}
+.cf-dia i{display:block;width:100%;max-width:26px;border-radius:3px 3px 0 0;background:var(--marca)} .cf-dia i.rojo{background:var(--rojo)}
+.cf-dia span{font-size:10px;color:var(--tenue);font-variant-numeric:tabular-nums}
 .campos label input,.campos label textarea,.campos label select{color:var(--texto);width:100%}
 .campos input.num-in{width:100%}
 .campos textarea{font:12.5px/1.5 var(--mono);resize:vertical;min-height:96px}

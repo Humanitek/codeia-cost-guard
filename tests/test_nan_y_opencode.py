@@ -65,6 +65,51 @@ class UsoNanTest(unittest.TestCase):
             self.assertIsNone(cuota_nan.uso_nan(MES))
 
 
+class CatalogoNanTest(unittest.TestCase):
+    """GET /v1/models: con el catálogo, el plan de NaN reconoce sus modelos sin escribirlos a mano."""
+    CATALOGO = {"object": "list", "data": [{"id": "Qwen3.6", "object": "model"}, {"id": "deepseek-v4-flash"}, {"id": ""}]}
+
+    def setUp(self):
+        if os.path.exists(rutas.NAN_MODELOS_CACHE):
+            os.remove(rutas.NAN_MODELOS_CACHE)
+        self.clave = mock.patch.object(cuota_nan, "clave_nan", return_value="clave-de-prueba")
+        self.clave.start()
+        self.addCleanup(self.clave.stop)
+        self.addCleanup(lambda: os.path.exists(rutas.NAN_MODELOS_CACHE) and os.remove(rutas.NAN_MODELOS_CACHE))
+
+    def test_el_catalogo_se_lee_y_se_cachea(self):
+        with mock.patch("urllib.request.urlopen", _responde(self.CATALOGO)):
+            self.assertEqual(cuota_nan.modelos_nan(), ["deepseek-v4-flash", "qwen3.6"])
+        with mock.patch("urllib.request.urlopen", side_effect=AssertionError("no deberia llamar")):
+            self.assertEqual(cuota_nan.modelos_nan(), ["deepseek-v4-flash", "qwen3.6"])
+
+    def test_un_fallo_conserva_el_ultimo_catalogo_y_no_insiste_enseguida(self):
+        with open(rutas.NAN_MODELOS_CACHE, "w") as f:
+            json.dump({"ts": 0, "modelos": ["glm5.3"]}, f)
+        with mock.patch("urllib.request.urlopen", _responde({"error": "unauthorized"})):
+            self.assertEqual(cuota_nan.modelos_nan(), ["glm5.3"])
+        with mock.patch("urllib.request.urlopen", side_effect=AssertionError("no deberia llamar")):
+            self.assertEqual(cuota_nan.modelos_nan(), ["glm5.3"])
+
+    def test_sin_clave_no_hay_red_ni_catalogo(self):
+        with mock.patch.object(cuota_nan, "clave_nan", return_value=""), \
+             mock.patch("urllib.request.urlopen", side_effect=AssertionError("no deberia llamar")):
+            self.assertIsNone(cuota_nan.modelos_nan())
+
+    def test_el_plan_de_nan_reconoce_su_catalogo_y_apagado_no_lo_consulta(self):
+        from infobar import planes_y_tarifas
+        conf = {"proveedores": [{"nombre": "NaN", "modelos": ["glm"]}, {"nombre": "Claude", "modelos": ["claude"]}]}
+        with mock.patch("urllib.request.urlopen", _responde(self.CATALOGO)):
+            provs = planes_y_tarifas.proveedores_de(conf, ["qwen3.6", "claude-sonnet-5"])
+        self.assertEqual(provs[0]["modelos"], ["glm", "deepseek-v4-flash", "qwen3.6"])
+        self.assertEqual(provs[1]["modelos"], ["claude"])                    # el catálogo es solo del plan de NaN
+        self.assertEqual([p["nombre"] for p in provs], ["NaN", "Claude"])    # qwen3.6 ya no sale como familia suelta
+        os.remove(rutas.NAN_MODELOS_CACHE)
+        conf["proveedores"][0]["activo"] = False
+        with mock.patch("urllib.request.urlopen", side_effect=AssertionError("no deberia llamar")):
+            self.assertEqual(planes_y_tarifas.proveedores_de(conf)[0]["modelos"], ["glm"])
+
+
 def _base_opencode(ruta, mensajes):
     con = sqlite3.connect(ruta)
     con.execute("create table session (id text, directory text, model text, tokens_input int, "

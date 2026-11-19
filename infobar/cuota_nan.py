@@ -1,7 +1,8 @@
-"""Consumo real de la cuenta NaN (GET /v1/usage), con cache en disco."""
-import json, os, ssl, time, urllib.parse, urllib.request
+"""Consumo real de la cuenta NaN (GET /v1/usage) y su catalogo de modelos (GET /v1/models), con cache en disco."""
+import json, os, time, urllib.parse, urllib.request
 
 from . import claves, rutas
+from .certificados import contexto_ssl
 from .config_y_estado import cfg, log
 
 
@@ -9,14 +10,18 @@ from .config_y_estado import cfg, log
 # porque los logs locales no ven lo que corrio en la nube ni en otra maquina.
 NAN_USO_URL = "https://api.nan.builders/v1/usage"
 NAN_USO_TTL = 300           # segundos: /usage permite 30 rpm, con refrescar cada 5 min sobra
+NAN_MODELOS_URL = "https://api.nan.builders/v1/models"
+NAN_MODELOS_TTL = 6 * 3600  # el catalogo cambia poco: cuatro lecturas al dia
+NAN_MODELOS_REINTENTO = 600 # tras un fallo no se insiste en cada refresco (cada llamada puede tardar 6 s)
 
 
 def invalidar():
     """Al pulsar Refrescar: la proxima lectura va a la API aunque la cache tenga menos de 5 min."""
-    try:
-        os.remove(rutas.NAN_USO_CACHE)
-    except OSError:
-        pass
+    for ruta in (rutas.NAN_USO_CACHE, rutas.NAN_MODELOS_CACHE):
+        try:
+            os.remove(ruta)
+        except OSError:
+            pass
 
 
 _AVISADO = []              # el aviso de nan_api_key en config.json, una vez por proceso
@@ -47,26 +52,6 @@ def clave_nan():
         except Exception:
             pass
     return ""
-
-
-def _contexto_ssl():
-    """El Python de python.org en macOS no trae el almacen de certificados del sistema.
-
-    Sin esto, /usage falla con CERTIFICATE_VERIFY_FAILED. Se prueba certifi y, si no, el bundle
-    que macOS deja en /etc/ssl/cert.pem. Nunca se desactiva la verificacion.
-    """
-    try:
-        import certifi
-        return ssl.create_default_context(cafile=certifi.where())
-    except Exception:
-        pass
-    for cafile in ("/etc/ssl/cert.pem", "/usr/local/etc/openssl/cert.pem", "/opt/homebrew/etc/openssl/cert.pem"):
-        if os.path.exists(cafile):
-            try:
-                return ssl.create_default_context(cafile=cafile)
-            except Exception:
-                pass
-    return ssl.create_default_context()
 
 
 def _por_modelo(d):
@@ -101,22 +86,59 @@ def uso_nan(inicio_mes):
     if not key:
         return None
     try:
-        req = urllib.request.Request(
-            f"{NAN_USO_URL}?start_date={inicio_mes}",
-            headers={"Authorization": f"Bearer {key}", "User-Agent": "CostBar/1.0",
-                     "Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=6, context=_contexto_ssl()) as resp:
-            d = json.loads(resp.read().decode("utf-8"))
-        por_modelo = _por_modelo(d)
-        try:
-            os.makedirs(os.path.dirname(rutas.NAN_USO_CACHE), exist_ok=True)
-            tmp = f"{rutas.NAN_USO_CACHE}.{os.getpid()}.tmp"     # atomico: el panel puede leerla a la vez
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump({"ts": ahora, "inicio_mes": inicio_mes, "por_modelo": por_modelo}, f)
-            os.replace(tmp, rutas.NAN_USO_CACHE)
-        except Exception:
-            pass
+        por_modelo = _por_modelo(_pide(f"{NAN_USO_URL}?start_date={inicio_mes}", key))
+        _guarda(rutas.NAN_USO_CACHE, {"ts": ahora, "inicio_mes": inicio_mes, "por_modelo": por_modelo})
         return por_modelo
     except Exception as e:
         log(f"nan /usage: {type(e).__name__}: {e}")
         return cache.get("por_modelo") if cache.get("inicio_mes") == inicio_mes else None
+
+
+def _pide(url, key):
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {key}", "User-Agent": "CostBar/1.0",
+                                               "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=6, context=contexto_ssl()) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _guarda(ruta, datos):
+    try:
+        os.makedirs(os.path.dirname(ruta), exist_ok=True)
+        tmp = f"{ruta}.{os.getpid()}.tmp"                        # atomico: el panel puede leerla a la vez
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(datos, f)
+        os.replace(tmp, ruta)
+    except Exception:
+        pass
+
+
+def modelos_nan():
+    """Catalogo de modelos que la clave de NaN puede usar (GET /v1/models), en minusculas, o None.
+
+    Con el, el plan reconoce sus modelos sin escribirlos a mano en Ajustes. Sin clave no hay catalogo
+    (el endpoint la exige); si la red falla vale el ultimo bueno y no se reintenta hasta pasados 10 min.
+    """
+    ahora = time.time()
+    try:
+        with open(rutas.NAN_MODELOS_CACHE, encoding="utf-8") as f:
+            cache = json.load(f)
+    except Exception:
+        cache = {}
+    if (ahora - (cache.get("ts") or 0)) < NAN_MODELOS_TTL:
+        return cache.get("modelos")
+    key = clave_nan()
+    if not key:
+        # tampoco se mira el Llavero en cada refresco: guardar una clave invalida esta cache
+        _guarda(rutas.NAN_MODELOS_CACHE, {"ts": ahora - NAN_MODELOS_TTL + NAN_MODELOS_REINTENTO, "modelos": None})
+        return None
+    try:
+        filas = _pide(NAN_MODELOS_URL, key).get("data")
+        if not isinstance(filas, list):
+            raise ValueError("respuesta de /models sin data")
+        modelos = sorted({str(m.get("id") or "").strip().lower() for m in filas if isinstance(m, dict)} - {""})
+        _guarda(rutas.NAN_MODELOS_CACHE, {"ts": ahora, "modelos": modelos})
+        return modelos
+    except Exception as e:
+        log(f"nan /models: {type(e).__name__}: {e}")
+        _guarda(rutas.NAN_MODELOS_CACHE, {"ts": ahora - NAN_MODELOS_TTL + NAN_MODELOS_REINTENTO, "modelos": cache.get("modelos")})
+        return cache.get("modelos")

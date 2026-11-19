@@ -17,7 +17,7 @@ import hmac, json, os, secrets, socket, subprocess, sys, threading, time
 from urllib.parse import parse_qs, urlsplit
 
 from . import ajustes, claves, exportacion, exportacion_csv, guia_web, historico, presupuestos, rutas, servidores_alta, servidores_alta_claves, servidores_api, servidores_avisos, servidores_panel, servidores_webs
-from . import cuota_nan, servidores_ciclo
+from . import cloudflare_uso, cuota_nan, servidores_ciclo
 from .agregacion import informe
 from .config_y_estado import cfg, guardar_con_revision, guardar_config, log, olvidar_cache
 from .servidores import _errores_ips_guardadas, errores_ips, errores_servidores, revision_servidores
@@ -112,7 +112,7 @@ def _sesion_valida(srv, cabecera_cookie):
     return ok
 
 
-DESTINOS = {"guia": "/guia"}          # a dónde puede mandar `entrar` tras canjear el ticket (lista cerrada)
+DESTINOS = {"guia": "/guia", "cloudflare": "/#cloudflare"}          # a dónde puede mandar `entrar` tras canjear el ticket (lista cerrada)
 
 
 def url_panel(destino=None):
@@ -344,6 +344,14 @@ def crear_servidor(puerto=PUERTO):
                 if set(q) != {"id"} or len(ids) != 1:
                     return self._json(400, {"ok": False, "codigo": "entrada_invalida"})
                 self._json(*servidores_alta.atiende("estado", {"id": ids[0]}))
+            elif ruta == "/cloudflare":
+                try:
+                    if urlsplit(self.path).query == "fresco=1":       # botón Actualizar de la pestaña: salta la cache de 10 min
+                        cloudflare_uso.invalidar()
+                    d = cloudflare_uso.leer()
+                    self._json(200, {k: v for k, v in d.items() if k not in ("hasta", "cuenta_cfg", "cuenta")})
+                except Exception as e:
+                    self._json(500, {"error": type(e).__name__})
             elif ruta == "/origenes":
                 try:
                     r = informe()
@@ -357,7 +365,10 @@ def crear_servidor(puerto=PUERTO):
                     r = informe()
                     c = con_revision(sin_secretos(cfg()))
                     provs = [{"nombre": p["nombre"], "clave_guardada": bool(claves.leer_clave(ajustes.cuenta_de(p["nombre"], p.get("uso_api")))),
-                              "api_soportada": ajustes.api_soportada(p)} for p in (c.get("proveedores") or [])]
+                              "api_soportada": ajustes.api_soportada(p),
+                              # catálogo del proveedor (solo NaN lo publica, y exige clave): None = sin catálogo que enseñar
+                              "catalogo": (cuota_nan.modelos_nan() if ajustes.api_soportada(p) and p.get("activo") is not False else None)}
+                             for p in (c.get("proveedores") or [])]
                     # claves de los paneles (Dokploy/Easypanel) de cada servidor, por host
                     paneles = {}
                     for s in c.get("servidores") or []:
@@ -365,6 +376,10 @@ def crear_servidor(puerto=PUERTO):
                         if cuenta:
                             paneles[s["nombre"]] = {"cuenta": cuenta, "clave_guardada": bool(claves.leer_clave(cuenta))}
                     self._json(200, {"config": c, "origenes": r.get("origenes", {}), "proyectos": r.get("proyectos_origen", {}),
+                                     # modelos que cada plan ha usado de verdad según los logs (también los de un plan apagado)
+                                     "modelos_plan": {n: sorted(ms) for n, ms in (r.get("cruce") or {}).items()},
+                                     # Cloudflare: solo si hay token guardado (nunca el token) y lo que dice config.json
+                                     "cloudflare": {"clave_guardada": bool(claves.leer_clave(cloudflare_uso.CUENTA_LLAVERO))},
                                      "proveedores": provs, "paneles": paneles, "keychain": claves.hay_llavero(), "copias": _estado_copias(), "presupuestos": _estado_presupuestos(),
                                      "alta_servidor": "infobar/remoto/alta-servidor.sh",
                                      # claves de ~/.ssh que se pueden elegir para el alta: solo NOMBRES de fichero, nunca su contenido
@@ -484,6 +499,7 @@ def crear_servidor(puerto=PUERTO):
             provs = {p["nombre"]: p for p in c.get("proveedores") or []}
             conocidas = {ajustes.cuenta_de(n, p.get("uso_api")): n for n, p in provs.items()}
             conocidas.update({_cuenta_panel(s): s["nombre"] for s in c.get("servidores") or [] if _cuenta_panel(s)})
+            conocidas[cloudflare_uso.CUENTA_LLAVERO] = "Cloudflare"
             nombre = str(cuerpo.get("proveedor") or "")
             cuenta = cuerpo.get("cuenta") or ajustes.cuenta_de(nombre, (provs.get(nombre) or {}).get("uso_api"))
             if cuenta not in conocidas or not claves.cuenta_valida(cuenta):
@@ -494,6 +510,8 @@ def crear_servidor(puerto=PUERTO):
                 claves.guardar_clave(cuenta, str(cuerpo.get("clave") or ""))
             if cuenta == "nan":
                 cuota_nan.invalidar()                  # que la cache de la API no oculte la clave nueva
+            if cuenta == cloudflare_uso.CUENTA_LLAVERO:
+                cloudflare_uso.invalidar()
             log(f"clave de {conocidas[cuenta]} {'borrada' if cuerpo.get('borrar') else 'guardada'} (Llavero)")
             self._json(200, {"ok": True})
 
