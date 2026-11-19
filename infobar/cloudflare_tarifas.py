@@ -120,7 +120,9 @@ def desglose(uso, estimacion):
             continue
         producto, lista, nombre, campo = RECURSOS[linea["clave"]]
         recursos = [r for r in (uso.get(producto) or {}).get(lista) or [] if r.get(campo)]
-        total = sum(r[campo] for r in recursos)
+        # el total que manda es el de la linea (todo el consumo); la lista del detalle viene recortada: sus
+        # porcentajes serian falsos si se calcularan solo sobre las filas que caben
+        total = linea["usado"]
         for r in recursos:
             filas.append({"producto": linea["producto"], "concepto": linea["concepto"], "recurso": r[nombre],
                           "coste": linea["coste"] * r[campo] / total, "nota": f"{100 * r[campo] / total:.0f} % de lo consumido"})

@@ -120,6 +120,22 @@ class Lectura(unittest.TestCase):
         self.assertEqual(e["sobrecoste"][0]["recurso"], "n1")                       # de mayor a menor
         self.assertAlmostEqual(sum(reparto.values()), e["extra"], delta=0.03)
 
+    def test_el_reparto_usa_el_total_completo_aunque_el_detalle_venga_recortado(self):
+        # la lista del detalle se recorta a 50 filas: el porcentaje se mide sobre TODO el consumo del mes
+        uso = {"workers": {"scripts": [{"nombre": "api", "peticiones": 9e6}]}}
+        e = cloudflare_tarifas.estimar({"workers_peticiones": 15e6}, ahora=FIN_DE_MES)
+        reparto = cloudflare_tarifas.desglose(uso, e)
+        self.assertEqual(reparto[0]["nota"], "60 % de lo consumido")              # 9 de 15 M, no 100 % de 9 M
+        self.assertEqual(reparto[0]["coste"], 0.9)                                # 60 % de 1,50 $
+
+    def test_sin_id_de_cuenta_el_fallo_dice_que_falta_el_id(self):
+        # token de solo analitica sin ID en Ajustes: Cloudflare contesta 403 al listar cuentas
+        for codigo, esperado in ((403, "falta el ID de cuenta en Ajustes"), (401, "Cloudflare rechaza el token")):
+            with mock.patch.object(cloudflare_api, "_pide", side_effect=cloudflare_api.Fallo("Cloudflare rechaza el token (caducado, borrado o sin permiso)", codigo)):
+                with self.assertRaises(cloudflare_api.Fallo) as fallo:
+                    cloudflare_api.cuenta_del_token("token-de-prueba")
+            self.assertIn(esperado, str(fallo.exception))
+
     def test_la_cache_evita_la_red_y_un_fallo_conserva_lo_ultimo(self):
         with mock.patch.object(cloudflare_api, "_pide", api()):
             cloudflare_uso.leer(FIN_DE_MES)

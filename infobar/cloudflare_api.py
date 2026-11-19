@@ -9,7 +9,11 @@ ID_CUENTA = re.compile(r"[0-9a-f]{32}")
 
 
 class Fallo(Exception):
-    """Un fallo con un texto que se puede enseñar tal cual (nunca lleva el token)."""
+    """Un fallo con un texto que se puede enseñar tal cual (nunca lleva el token). `codigo` es el HTTP si lo hubo."""
+
+    def __init__(self, mensaje, codigo=None):
+        super().__init__(mensaje)
+        self.codigo = codigo
 
 
 def _pide(token, ruta, cuerpo=None):
@@ -20,7 +24,7 @@ def _pide(token, ruta, cuerpo=None):
         with urllib.request.urlopen(req, timeout=10, context=contexto_ssl()) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
-        raise Fallo("Cloudflare rechaza el token (caducado, borrado o sin permiso)" if e.code in (401, 403) else f"Cloudflare respondió {e.code}")
+        raise Fallo("Cloudflare rechaza el token (caducado, borrado o sin permiso)" if e.code in (401, 403) else f"Cloudflare respondió {e.code}", e.code)
     except (urllib.error.URLError, OSError, ValueError) as e:
         raise Fallo(f"no se pudo hablar con Cloudflare ({type(e).__name__})")
 
@@ -28,7 +32,12 @@ def _pide(token, ruta, cuerpo=None):
 def cuenta_del_token(token):
     """Si en Ajustes no se indicó la cuenta y el token deja listar cuentas y solo ve una, es esa.
     Un token con solo «Account Analytics: Read» no puede listarlas: entonces hace falta el ID en Ajustes."""
-    filas = [f for f in (_pide(token, "/accounts?per_page=50").get("result") or []) if isinstance(f, dict) and ID_CUENTA.fullmatch(str(f.get("id") or ""))]
+    try:
+        filas = [f for f in (_pide(token, "/accounts?per_page=50").get("result") or []) if isinstance(f, dict) and ID_CUENTA.fullmatch(str(f.get("id") or ""))]
+    except Fallo as e:
+        if e.codigo == 403:             # el token lee analitica pero no lista cuentas: lo que falta es el ID en Ajustes
+            raise Fallo("falta el ID de cuenta en Ajustes: el token puede leer la analitica, pero no listar cuentas") from e
+        raise
     if len(filas) == 1:
         return filas[0]["id"]
     raise Fallo("el token ve varias cuentas: indica el ID de cuenta en Ajustes" if filas

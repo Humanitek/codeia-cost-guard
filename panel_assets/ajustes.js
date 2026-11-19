@@ -580,6 +580,6 @@
 
   // el panel se recarga solo cada minuto, salvo que estés en otra pestaña (la recarga volvería al panel)
   setInterval(() => { if (vistaActual === "panel") location.reload(); }, 60000);
-  if (location.protocol === "file:") { $("nav-ajustes").hidden = true; $("nav-historico").hidden = true; $("nav-servidores").hidden = true; }
+  if (location.protocol === "file:") { $("nav-ajustes").hidden = true; $("nav-historico").hidden = true; $("nav-servidores").hidden = true; $("nav-cloudflare").hidden = true; }
   else if (location.hash === "#ajustes") vista("ajustes");
 })();
