@@ -185,6 +185,12 @@ python3 costbar.py --proveedores    # lista tus modelos por proveedor y te da la
 
 Con los límites a 0 se muestran tokens en crudo; al ponerlos aparece el porcentaje.
 
+En Ajustes cada plan tiene un interruptor **Activo / Apagado**: apagado no sale en el panel ni en el
+desplegable y no se le consulta la API, pero conserva sus cuotas y sigue reconociendo sus modelos, así que
+no reaparecen como una familia suelta. Los **modelos de cada plan** se rellenan solos con los que han usado
+tus agentes en los últimos 30 días (y el plan de NaN reconoce además todo su catálogo); los patrones a mano
+quedan como opción avanzada.
+
 ### Ajustes visuales
 
 Desde el icono de la barra abre el panel y pulsa **Ajustes**: ahí editas sin tocar `config.json` los
@@ -215,6 +221,25 @@ red, cae sin ruido a los logs locales.
 ```bash
 export NAN_API_KEY=sk-tu-clave    # en tu shell (o ~/.zshrc); config.example.json lo documenta
 ```
+
+### Cloudflare: consumo y gasto estimado
+
+Si tus agentes corren sobre Cloudflare (Workers, Workers AI, KV, R2 o D1), la pestaña **Cloudflare** del
+panel y del desplegable enseña el consumo del mes frente al cupo de Workers Paid, el gasto estimado con las
+tarifas públicas, la proyección a fin de mes y qué worker, modelo, cubo, base o espacio genera el gasto
+extra. Se conecta con un token de **solo lectura**:
+
+1. En `dash.cloudflare.com` → **Mi perfil → Tokens de API → Crear token personalizado**, con el permiso de
+   cuenta «Account Analytics: Read» y nada más: con ese permiso la app solo puede leer estadísticas.
+2. Copia el **ID de cuenta** (menú ⋯ junto al nombre de la cuenta → Copiar ID de cuenta; un token de solo
+   analítica no puede averiguarlo por su cuenta).
+3. Pega el token y el ID en **Ajustes → Cloudflare**.
+
+El token va al almacén de credenciales del sistema (cuenta `cloudflare`) y nunca sale en las respuestas ni
+en los mensajes de error. Cada producto se lee por separado: si uno falla (permiso que falta, producto sin
+usar) los demás siguen saliendo, y lo leído se guarda 10 minutos en disco. La pestaña solo aparece cuando
+hay token guardado. El gasto es una **estimación** sobre el mes natural: no incluye Durable Objects,
+colas ni otros productos, y la factura real la calcula Cloudflare.
 
 ## Cómo cuenta
 

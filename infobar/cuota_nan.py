@@ -1,5 +1,5 @@
 """Consumo real de la cuenta NaN (GET /v1/usage) y su catalogo de modelos (GET /v1/models), con cache en disco."""
-import json, os, time, urllib.parse, urllib.request
+import json, os, threading, time, urllib.parse, urllib.request
 
 from . import claves, rutas
 from .certificados import contexto_ssl
@@ -104,7 +104,8 @@ def _pide(url, key):
 def _guarda(ruta, datos):
     try:
         os.makedirs(os.path.dirname(ruta), exist_ok=True)
-        tmp = f"{ruta}.{os.getpid()}.tmp"                        # atomico: el panel puede leerla a la vez
+        # atomico y sin choques: el trabajador y el panel escriben a la vez desde el mismo proceso
+        tmp = f"{ruta}.{os.getpid()}.{threading.get_ident()}.tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(datos, f)
         os.replace(tmp, ruta)

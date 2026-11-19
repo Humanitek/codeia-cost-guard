@@ -365,10 +365,12 @@ def agregar(vistos, nuevos=0, periodo=None):
         _pr["modelos_cuota"] = _mc
         _pr["cuota_fuente"] = _cfuente
         provs_out[_pn] = _pr
+    # la familia de la ventana de 5 h lleva nombre de plan: un plan apagado no se nombra (ni aquí ni en las cuotas)
     return {"hoy": dias.get(hoy, vacio()), "ayer": dias.get(ayer, vacio()), "semana": semana, "mes": mes,
             "modelos_mes": dict(modelos_mes),
             "modelo_dia": {m: dict(v) for m, v in modelo_dia.items()},
-            "ritmo": ritmo, "cinco_h": {"tok": cinco["tok"], "usd": cinco["usd"], "fam": dict(cinco["fam"])},
+            "ritmo": ritmo, "cinco_h": {"tok": cinco["tok"], "usd": cinco["usd"],
+                                        "fam": {k: v for k, v in cinco["fam"].items() if k not in apagados}},
             "pct_5h": (cinco["tok"] / lim5 * 100) if lim5 else 0.0,
             "pct_semana": (semana["tok"] / limsem * 100) if limsem else 0.0,
             "dias": {d: dias[d] for d in dias if d},

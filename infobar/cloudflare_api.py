@@ -24,6 +24,7 @@ def _pide(token, ruta, cuerpo=None):
         with urllib.request.urlopen(req, timeout=10, context=contexto_ssl()) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
+        e.close()                       # el error trae la respuesta abierta: cerrarla no deja el socket al recolector
         raise Fallo("Cloudflare rechaza el token (caducado, borrado o sin permiso)" if e.code in (401, 403) else f"Cloudflare respondió {e.code}", e.code)
     except (urllib.error.URLError, OSError, ValueError) as e:
         raise Fallo(f"no se pudo hablar con Cloudflare ({type(e).__name__})")

@@ -4,7 +4,7 @@ Los datos salen de la API de analítica (GraphQL) con un token de solo lectura g
 (cuenta "cloudflare"). Cada producto se pide por separado: si uno falla (permiso que falta, producto
 sin usar) los demás siguen saliendo. El gasto se estima con las tarifas públicas (cloudflare_tarifas).
 """
-import json, os, time
+import json, os, threading, time
 
 from . import claves, rutas
 from .cloudflare_api import ID_CUENTA, Fallo, cuenta_del_token
@@ -99,7 +99,8 @@ def leer(ahora=None):
             nuevo = dict(previo, configurado=True, cuenta_cfg=cuenta, mes=mes, error=str(e), hasta=ahora + REINTENTO)
     try:
         os.makedirs(os.path.dirname(rutas.CLOUDFLARE_CACHE), exist_ok=True)
-        tmp = f"{rutas.CLOUDFLARE_CACHE}.{os.getpid()}.tmp"        # atómico: el panel puede leerla a la vez
+        # atómico y sin choques: el trabajador y la petición del panel escriben a la vez desde el mismo proceso
+        tmp = f"{rutas.CLOUDFLARE_CACHE}.{os.getpid()}.{threading.get_ident()}.tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(nuevo, f)
         os.replace(tmp, rutas.CLOUDFLARE_CACHE)

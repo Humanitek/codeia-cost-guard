@@ -27,10 +27,10 @@ def vistos():
 
 
 class PlanApagado(unittest.TestCase):
-    def informe(self, activo_nan):
+    def informe(self, activo_nan, v=None):
         c = config(activo_nan)
         with mock.patch.object(agregacion, "cfg", lambda: c), mock.patch.object(planes_y_tarifas, "cfg", lambda: c):
-            return agregacion.agregar(vistos(), 0, 7)
+            return agregacion.agregar(v or vistos(), 0, 7)
 
     def test_encendido_sale_con_su_cuota(self):
         r = self.informe(True)
@@ -47,6 +47,15 @@ class PlanApagado(unittest.TestCase):
         r = self.informe(False)
         self.assertNotIn("glm", r["proveedores"])
         self.assertIn("glm5.3-flash", r["cruce"]["NaN"])        # y Ajustes puede seguir listando lo que usó
+
+    def test_apagado_no_se_nombra_en_la_ventana_de_5h(self):
+        # las familias de la ventana de 5 h llevan nombre de plan: apagado no se nombra, pero su consumo sigue sumando
+        v = vistos()
+        v["b"]["horas"] = {int(time.time()): {"tok": 50, "usd": 0.0, "mod": {"glm5.3-flash": 50}}}
+        self.assertEqual(self.informe(True, v)["cinco_h"]["fam"], {"NaN": 50})
+        r = self.informe(False, v)
+        self.assertNotIn("NaN", r["cinco_h"]["fam"])
+        self.assertEqual(r["cinco_h"]["tok"], 50)
 
     def test_apagado_no_consulta_la_api_del_proveedor(self):
         c = config(False)
